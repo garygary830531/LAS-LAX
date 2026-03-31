@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2025 美西大環線 | 實路動線交互行程表</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    
+    <style>
+        :root {
+            --d1-color: #dc2626; --d2-color: #16a34a; --d3-color: #2563eb;
+            --d4-color: #9333ea; --d5-color: #ea580c; --d6-color: #0891b2;
+        }
+        html { scroll-behavior: smooth; }
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; }
+        
+        #map { height: 60vh; width: 100%; border-radius: 1.5rem; border: 4px solid white; box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 10; }
+        .leaflet-routing-container { display: none !important; }
+        
+        .poi-btn { cursor: pointer; color: #2563eb; font-weight: 800; border-bottom: 2px solid #dbeafe; transition: 0.2s; }
+        .poi-btn:hover { background: #eff6ff; border-bottom-color: #2563eb; }
+        
+        .gmap-day-link { 
+            display: inline-flex; align-items: center; background: #4285F4; color: white; 
+            padding: 5px 14px; border-radius: 999px; font-size: 0.75rem; font-weight: 900;
+            margin-left: 14px; vertical-align: middle; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-decoration: none;
+        }
+        .gmap-day-link:hover { background: #3367d6; transform: translateY(-2px); }
+
+        .gmap-single { 
+            display: inline-flex; align-items: center; background: #f1f5f9; border: 1px solid #e2e8f0; 
+            padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; color: #64748b; 
+            margin-left: 6px; font-weight: bold; text-decoration: none;
+        }
+        .gmap-single:hover { background: #e2e8f0; color: #1e293b; }
+
+        .timeline-time { min-width: 140px; flex-shrink: 0; font-weight: 900; color: #0f172a; border-right: 4px solid #cbd5e1; margin-right: 1.5rem; padding: 0.25rem 0; }
+        .timeline-item { display: flex; align-items: flex-start; padding-bottom: 2rem; }
+        
+        #route-status { display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 20px; border-radius: 30px; z-index: 2000; font-size: 13px; font-weight: bold; }
+
+        @media (max-width: 640px) { 
+            .timeline-time { min-width: 100px; font-size: 0.8rem; } 
+            #map { height: 45vh; } 
+            .gmap-day-link { margin-left: 0; margin-top: 10px; display: block; width: fit-content; }
+        }
+    </style>
+</head>
+<body class="text-slate-900">
+
+    <header class="bg-slate-950 text-white py-14 px-6 shadow-2xl text-center md:text-left">
+        <div class="max-w-6xl mx-auto">
+            <h1 class="text-4xl md:text-5xl font-black mb-6 italic uppercase tracking-tighter">🗓️ 2025 美西大環線 · 實路導航交互行程表</h1>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-medium">
+                <div class="bg-white/10 p-5 rounded-2xl border border-white/10">3/31 20:45 抵達 LAX (CI8)</div>
+                <div class="bg-white/10 p-5 rounded-2xl border border-white/10">4/07 00:05 起飛 LAX (CI7)</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-10">
+
+        <section id="map-area" class="mb-16 relative">
+            <div id="route-status">🚗 正在演算實路動線...</div>
+            <div class="flex flex-col md:flex-row justify-between items-end mb-6 gap-4">
+                <div>
+                    <h2 class="text-3xl font-black tracking-tighter uppercase italic text-slate-800 font-black italic uppercase">Interactive Map</h2>
+                    <p class="text-slate-500 text-sm italic font-medium">點擊 SHOW 按鈕可在地圖預覽時間序連線；標題後按鈕可開啟 Google Map 多點導航</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="TravelApp.showDay(1)" class="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black shadow-lg">SHOW D1</button>
+                    <button onclick="TravelApp.showDay(2)" class="px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-black shadow-lg">SHOW D2</button>
+                    <button onclick="TravelApp.showDay(3)" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-black shadow-lg">SHOW D3</button>
+                    <button onclick="TravelApp.showDay(4)" class="px-4 py-2 bg-purple-600 text-white rounded-xl text-xs font-black shadow-lg">SHOW D4</button>
+                    <button onclick="TravelApp.showDay(5)" class="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-black shadow-lg">SHOW D5</button>
+                    <button onclick="TravelApp.showDay(6)" class="px-4 py-2 bg-cyan-600 text-white rounded-xl text-xs font-black shadow-lg">SHOW D6</button>
+                </div>
+            </div>
+            <div id="map"></div>
+        </section>
+
+        <!-- 行程區 -->
+        <section class="space-y-16">
+            
+            <div id="day0">
+                <h2 class="text-2xl font-black bg-slate-900 text-white px-8 py-5 rounded-t-2xl">Day 0 3/31 抵達洛杉磯</h2>
+                <div class="bg-white p-8 rounded-b-2xl border border-slate-200 shadow-sm">
+                    <div class="timeline-item"><div class="timeline-time">20:45</div><div>抵達 <span class="poi-btn" onclick="TravelApp.focusPOI('lax')">LAX（CI8）</span><a href="https://www.google.com/maps/search/?api=1&query=Los+Angeles+International+Airport" target="_blank" class="gmap-single">MAP</a>，通關領行李</div></div>
+                    <div class="timeline-item"><div class="timeline-time">21:30–22:30</div><div>前往飯店辦理入住</div></div>
+                    <div class="timeline-item"><div class="timeline-time">🏨 住宿</div><div>洛杉磯喜來登飯店 <a href="https://www.google.com/maps/search/?api=1&query=Sheraton+Grand+Los+Angeles" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-sm">備註：晚間抵達，建議早睡以利隔日行程。</div>
+                </div>
+            </div>
+
+            <div id="day1">
+                <h2 class="text-2xl font-black bg-red-600 text-white px-8 py-5 rounded-t-2xl shadow-lg">
+                    Day 1 4/01 好萊塢與市中心
+                    <a href="https://www.google.com/maps/dir/TCL+Chinese+Theatre/Lake+Hollywood+Park/The+Getty/Grand+Central+Market/Bradbury+Building/Walt+Disney+Concert+Hall/The+Broad/millet+crepe+little+tokyo/Union+Station/Griffith+Observatory" target="_blank" class="gmap-day-link">🗺️ Google Map 整日路線</a>
+                </h2>
+                <div class="bg-white p-8 rounded-b-2xl border border-slate-200 shadow-sm">
+                    <div class="timeline-item"><div class="timeline-time">07:30–08:15</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('walk_of_fame')">星光大道與中國戲院（Walk of Fame）</span><a href="https://www.google.com/maps/search/?api=1&query=TCL+Chinese+Theatre" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="timeline-item"><div class="timeline-time">08:15–09:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('hollywood_park')">Lake Hollywood Park</span><a href="https://www.google.com/maps/search/?api=1&query=Lake+Hollywood+Park" target="_blank" class="gmap-single">MAP</a> 拍 Hollywood Sign（搭 DASH Beachwood Canyon）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">09:30–12:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('the_getty')">The Getty</span><a href="https://www.google.com/maps/search/?api=1&query=The+Getty" target="_blank" class="gmap-single">MAP</a>（預約 10:30 入場；白色建築光影）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">12:30–14:15</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('grand_market')">Grand Central Market</span><a href="https://www.google.com/maps/search/?api=1&query=Grand+Central+Market" target="_blank" class="gmap-single">MAP</a> 午餐（Villa's Tacos 推薦）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">14:15–14:45</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('bradbury')">Bradbury Building</span><a href="https://www.google.com/maps/search/?api=1&query=Bradbury+Building" target="_blank" class="gmap-single">MAP</a> 外拍（市場對面）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">14:45–17:00</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('disney_hall')">迪士尼音樂廳</span><a href="https://www.google.com/maps/search/?api=1&query=Walt+Disney+Concert+Hall" target="_blank" class="gmap-single">MAP</a> & <span class="poi-btn" onclick="TravelApp.focusPOI('the_broad')">The Broad</span><a href="https://www.google.com/maps/search/?api=1&query=The+Broad" target="_blank" class="gmap-single">MAP</a>（The Broad 16:00 入場）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">17:00–18:30</div><div>小東京與中央車站（<span class="poi-btn" onclick="TravelApp.focusPOI('crepe')">millet crepe - little tokyo</span><a href="https://www.google.com/maps/search/?api=1&query=millet+crepe+little+tokyo" target="_blank" class="gmap-single">MAP</a>、<span class="poi-btn" onclick="TravelApp.focusPOI('union_st')">Union Station</span><a href="https://www.google.com/maps/search/?api=1&query=Union+Station+Los+Angeles" target="_blank" class="gmap-single">MAP</a>）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">18:30–21:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('griffith')">Griffith Observatory</span><a href="https://www.google.com/maps/search/?api=1&query=Griffith+Observatory" target="_blank" class="gmap-single">MAP</a>（視日落與交通提前或延後上山；日落約 17:14）</div></div>
+                    <div class="mt-4 p-4 bg-slate-50 border-l-4 border-slate-400 text-sm">備註：市區以 Uber/地鐵混合移動；Getty 建議提早預約停車。</div>
+                </div>
+            </div>
+
+            <div id="day2">
+                <h2 class="text-2xl font-black bg-green-600 text-white px-8 py-5 rounded-t-2xl shadow-lg">
+                    Day 2 4/02 飛往拉斯維加斯 前往 Page
+                    <a href="https://www.google.com/maps/dir/Harry+Reid+International+Airport/Shake+Shack+1830+W+Craig+Rd+North+Las+Vegas+NV+89031/Walmart+Supercenter+Craig+Rd/Lone+Rock+Beach/Wahweap+Overlook/Glen+Canyon+Dam/Horseshoe+Bend/Glen+Canyon+Dam+Overlook/Knights+Inn+Page+AZ/Dennys+Page+AZ" target="_blank" class="gmap-day-link">🗺️ Google Map 整日路線</a>
+                </h2>
+                <div class="bg-white p-8 rounded-b-2xl border border-slate-200 shadow-sm">
+                    <div class="timeline-item"><div class="timeline-time">06:30–08:00</div><div>飯店退房、前往機場</div></div>
+                    <div class="timeline-item"><div class="timeline-time">10:03–11:10</div><div>搭乘 Spirit NK1641 抵達 <span class="poi-btn" onclick="TravelApp.focusPOI('las_airport')">LAS</span><a href="https://www.google.com/maps/search/?api=1&query=Harry+Reid+International+Airport" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="timeline-item"><div class="timeline-time">11:10–12:00</div><div>租車領車、檢查車況</div></div>
+                    <div class="timeline-item"><div class="timeline-time">12:00–13:30</div><div>午餐 <span class="poi-btn" onclick="TravelApp.focusPOI('shake_shack_lv')">Shake Shack（Craig Road）</span><a href="https://www.google.com/maps/search/?api=1&query=Shake+Shack+1830+W+Craig+Rd+North+Las+Vegas+NV+89031" target="_blank" class="gmap-single">MAP</a> ＋<span class="poi-btn" onclick="TravelApp.focusPOI('walmart')">Walmart</span><a href="https://www.google.com/maps/search/?api=1&query=Walmart+Supercenter+Craig+Road" target="_blank" class="gmap-single">MAP</a> 採買補給</div></div>
+                    <div class="timeline-item"><div class="timeline-time">13:30–17:30</div><div>開車前往 Page（預估車程約 4 小時，建議預留 30–60 分緩衝）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">17:30–18:00</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('lone_rock')">Lone Rock Beach</span><a href="https://www.google.com/maps/search/?api=1&query=Lone+Rock+Beach" target="_blank" class="gmap-single">MAP</a> 快拍</div></div>
+                    <div class="timeline-item"><div class="timeline-time">18:00–18:20</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('wahweap')">Wahweap Overlook</span><a href="https://www.google.com/maps/search/?api=1&query=Wahweap+Overlook" target="_blank" class="gmap-single">MAP</a> 快拍</div></div>
+                    <div class="timeline-item"><div class="timeline-time">18:20–18:40</div><div>經 <span class="poi-btn" onclick="TravelApp.focusPOI('glen_dam')">Glen Canyon Dam</span><a href="https://www.google.com/maps/search/?api=1&query=Glen+Canyon+Dam" target="_blank" class="gmap-single">MAP</a> 進入 Page</div></div>
+                    <div class="timeline-item"><div class="timeline-time">18:45–20:00</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('horseshoe')">馬蹄灣</span>日落拍攝（日落約 19:42）<a href="https://www.google.com/maps/search/?api=1&query=Horseshoe+Bend+Arizona" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="timeline-item"><div class="timeline-time">20:15–20:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('glen_overlook')">Glen Canyon Dam Overlook</span><a href="https://www.google.com/maps/search/?api=1&query=Glen+Canyon+Dam+Overlook" target="_blank" class="gmap-single">MAP</a> 夜景或回程拍攝</div></div>
+                    <div class="timeline-item"><div class="timeline-time">20:30–21:00</div><div>飯店 Check in</div></div>
+                    <div class="timeline-item"><div class="timeline-time">21:30–22:30</div><div>晚餐 <span class="poi-btn" onclick="TravelApp.focusPOI('dennys')">Denny’s</span><a href="https://www.google.com/maps/search/?api=1&query=Denny's+Page+AZ" target="_blank" class="gmap-single">MAP</a> 或市區餐廳</div></div>
+                    <div class="timeline-item"><div class="timeline-time">🏨 住宿</div><div>Knights Inn Page <a href="https://www.google.com/maps/search/?api=1&query=Knights+Inn+Page+AZ" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="mt-4 p-4 bg-slate-50 border-l-4 border-slate-400 text-sm">備註：馬蹄灣停車與步行需預留 15–25 分鐘。</div>
+                </div>
+            </div>
+
+            <div id="day3">
+                <h2 class="text-2xl font-black bg-blue-600 text-white px-8 py-5 rounded-t-2xl shadow-lg">
+                    Day 3 4/03 Page 羚羊峽谷 前往 紀念碑谷
+                    <a href="https://www.google.com/maps/dir/Horseshoe+Bend/The+New+Wave+Trailhead+Page+AZ/The+Chains+Page+AZ/Biidi+the+Arch+Page+AZ/Lower+Antelope+Canyon/Monument+Valley+Visitor+Center/Forrest+Gump+Point/Wetherill+Inn+Kayenta+AZ/Taco+Bell+Kayenta" target="_blank" class="gmap-day-link">🗺️ Google Map 整日路線</a>
+                </h2>
+                <div class="bg-white p-8 rounded-b-2xl border border-slate-200 shadow-sm">
+                    <div class="timeline-item"><div class="timeline-time">06:45–08:00</div><div>馬蹄灣日出（07:11 日出）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">08:15–09:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('new_wave')">The New Wave</span><a href="https://www.google.com/maps/search/?api=1&query=The+New+Wave+Trailhead+Page+AZ" target="_blank" class="gmap-single">MAP</a>（若時間緊可刪減）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">09:40–10:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('chains')">The Chains</span><a href="https://www.google.com/maps/search/?api=1&query=The+Chains+Page+AZ" target="_blank" class="gmap-single">MAP</a>（可視體力與時間決定）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">10:45–11:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('biidi')">Biidi the Arch</span><a href="https://www.google.com/maps/search/?api=1&query=Biidi+the+Arch+Page+AZ" target="_blank" class="gmap-single">MAP</a>（短程步行 5–10 分）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">11:45–14:00</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('antelope')">Antelope Canyon</span><a href="https://www.google.com/maps/search/?api=1&query=Lower+Antelope+Canyon" target="_blank" class="gmap-single">MAP</a> 導覽（12:30 場次為例）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">14:00–17:30</div><div>開車前往 <span class="poi-btn" onclick="TravelApp.focusPOI('monument_valley')">Monument Valley</span><a href="https://www.google.com/maps/search/?api=1&query=Monument+Valley+Visitor+Center" target="_blank" class="gmap-single">MAP</a>（預估 3.5–4 小時，含時區變化）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">17:30–19:30</div><div>Monument Valley / <span class="poi-btn" onclick="TravelApp.focusPOI('gump_point')">Forrest Gump Point</span><a href="https://www.google.com/maps/search/?api=1&query=Forrest+Gump+Point+Utah" target="_blank" class="gmap-single">MAP</a> 等日落（19:43 日落）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">晚餐</div><div>Taco Bell <a href="https://www.google.com/maps/search/?api=1&query=Taco+Bell+Kayenta+AZ" target="_blank" class="gmap-single">MAP</a> 或當地簡餐</div></div>
+                    <div class="timeline-item"><div class="timeline-time">🏨 住宿</div><div>Wetherill Inn（Monument Valley）<a href="https://www.google.com/maps/search/?api=1&query=Wetherill+Inn+Kayenta" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="mt-4 p-4 bg-slate-50 border-l-4 border-slate-400 text-sm">備註：上午景點過多風險高，建議保留馬蹄灣與 Antelope，The New Wave/The Chains 二選一。</div>
+                </div>
+            </div>
+
+            <div id="day4">
+                <h2 class="text-2xl font-black bg-purple-600 text-white px-8 py-5 rounded-t-2xl shadow-lg">
+                    Day 4 4/04 Monument Valley 自駕 前往 大峽谷東口
+                    <a href="https://www.google.com/maps/dir/Monument+Valley+Visitor+Center/John+Ford+Point/Artist+Point+Monument+Valley/Kayenta+AZ/Desert+View+Watchtower/Lipan+Point/Mather+Point/Red+Feather+Lodge" target="_blank" class="gmap-day-link">🗺️ Google Map 整日路線</a>
+                </h2>
+                <div class="bg-white p-8 rounded-b-2xl border border-slate-200 shadow-sm">
+                    <div class="timeline-item"><div class="timeline-time">07:00–09:30</div><div>Monument Valley 17 英里景觀公路（<span class="poi-btn" onclick="TravelApp.focusPOI('john_ford')">John Ford's Point</span><a href="https://www.google.com/maps/search/?api=1&query=John+Ford+Point+Monument+Valley" target="_blank" class="gmap-single">MAP</a>、Artist's Point...）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">10:00–11:00</div><div>Forrest Gump Point 拍攝</div></div>
+                    <div class="timeline-item"><div class="timeline-time">11:00–14:30</div><div>開車前往 Grand Canyon East Entrance（<span class="poi-btn" onclick="TravelApp.focusPOI('desert_view')">Desert View</span><a href="https://www.google.com/maps/search/?api=1&query=Desert+View+Watchtower" target="_blank" class="gmap-single">MAP</a>；途中 <span class="poi-btn" onclick="TravelApp.focusPOI('kayenta')">Kayenta</span><a href="https://www.google.com/maps/search/?api=1&query=Kayenta+AZ" target="_blank" class="gmap-single">MAP</a> 補給）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">14:30–16:30</div><div>Desert View Watchtower、<span class="poi-btn" onclick="TravelApp.focusPOI('lipan')">Lipan Point</span><a href="https://www.google.com/maps/search/?api=1&query=Lipan+Point+Grand+Canyon" target="_blank" class="gmap-single">MAP</a> 拍攝</div></div>
+                    <div class="timeline-item"><div class="timeline-time">17:00–19:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('mather_point')">Mather Point</span><a href="https://www.google.com/maps/search/?api=1&query=Mather+Point+Grand+Canyon" target="_blank" class="gmap-single">MAP</a> 欣賞日落（拍攝大峽谷全景）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">🏨 住宿</div><div>Red Feather Lodge（或 Grand Canyon Village 附近）<a href="https://www.google.com/maps/search/?api=1&query=Red+Feather+Lodge+Grand+Canyon" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="mt-4 p-4 bg-slate-50 border-l-4 border-slate-400 text-sm">備註：注意時區與日落時間；Kayenta 為主要補給站。</div>
+                </div>
+            </div>
+
+            <div id="day5">
+                <h2 class="text-2xl font-black bg-orange-600 text-white px-8 py-5 rounded-t-2xl shadow-lg">
+                    Day 5 4/05 大峽谷 ➔ 拉斯維加斯
+                    <a href="https://www.google.com/maps/dir/Red+Feather+Lodge/Seligman+AZ/Kingman+AZ/Carl's+Jr.+Kingman+AZ/Hoover+Dam/Harry+Reid+International+Airport/Mandalay+Bay/MGM+Grand/The+Sphere+Las+Vegas/The+Venetian+Las+Vegas/Bellagio+Fountain/Paris+Las+Vegas" target="_blank" class="gmap-day-link">🗺️ Google Map 整日路線</a>
+                </h2>
+                <div class="bg-white p-8 rounded-b-2xl border border-slate-200 shadow-sm">
+                    <div class="timeline-item"><div class="timeline-time">07:00–09:30</div><div>退房、上路前往 66 號公路方向</div></div>
+                    <div class="timeline-item"><div class="timeline-time">09:30–11:30</div><div>沿 66 號公路行駛（途經 <span class="poi-btn" onclick="TravelApp.focusPOI('seligman')">Seligman</span><a href="https://www.google.com/maps/search/?api=1&query=Seligman+AZ" target="_blank" class="gmap-single">MAP</a> / <span class="poi-btn" onclick="TravelApp.focusPOI('kingman')">Kingman</span><a href="https://www.google.com/maps/search/?api=1&query=Kingman+AZ" target="_blank" class="gmap-single">MAP</a>，14:00 在 Kingman/Seligman 附近用餐）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">11:30–12:30</div><div>午餐 <span class="poi-btn" onclick="TravelApp.focusPOI('carls_jr')">Carl's Jr.</span><a href="https://www.google.com/maps/search/?api=1&query=Carl's+Jr+1830+W+Craig+Rd+North+Las+Vegas+NV+89031" target="_blank" class="gmap-single">MAP</a>（Kingman 或 Seligman）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">14:00–16:30</div><div>經<span class="poi-btn" onclick="TravelApp.focusPOI('hoover')">胡佛水庫</span><a href="https://www.google.com/maps/search/?api=1&query=Hoover+Dam" target="_blank" class="gmap-single">MAP</a>方向， 前往 LAS 還車（預留 30–60 分緩衝）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">16:30–17:30</div><div>Uber 回飯店 Check in</div></div>
+                    <div class="timeline-item"><div class="timeline-time">18:30 - 19:00</div><div>吃晚餐</div></div>
+                    <div class="timeline-item"><div class="timeline-time">19:00-20:30</div><div>看<span class="poi-btn" onclick="TravelApp.focusPOI('ka_show')">KA秀</span>(MGM Grand <a href="https://www.google.com/maps/search/?api=1&query=MGM+Grand+Las+Vegas" target="_blank" class="gmap-single">MAP</a>, 19:00開始,半小時前要就定位)</div></div>
+                    <div class="timeline-item"><div class="timeline-time">20:00–22:00</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('sphere')">Sphere</span><a href="https://www.google.com/maps/search/?api=1&query=The+Sphere+Las+Vegas" target="_blank" class="gmap-single">MAP</a> / <span class="poi-btn" onclick="TravelApp.focusPOI('venetian')">威尼斯人</span><a href="https://www.google.com/maps/search/?api=1&query=The+Venetian+Las+Vegas" target="_blank" class="gmap-single">MAP</a> / <span class="poi-btn" onclick="TravelApp.focusPOI('bellagio')">Bellagio & 噴泉</span><a href="https://www.google.com/maps/search/?api=1&query=Bellagio+Fountains" target="_blank" class="gmap-single">MAP</a> / <span class="poi-btn" onclick="TravelApp.focusPOI('paris')">巴黎人</span><a href="https://www.google.com/maps/search/?api=1&query=Paris+Las+Vegas" target="_blank" class="gmap-single">MAP</a></div></div>
+                    <div class="timeline-item"><div class="timeline-time">🏨 住宿</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('mandalay')">Mandalay Bay</span><a href="https://www.google.com/maps/search/?api=1&query=Mandalay+Bay+Las+Vegas" target="_blank" class="gmap-single">MAP</a></div></div>
+                </div>
+            </div>
+
+            <div id="day6">
+                <h2 class="text-2xl font-black bg-cyan-600 text-white px-8 py-5 rounded-t-2xl shadow-lg">
+                    Day 6 4/06 拉斯維加斯 ➔ LAX ➔ 返回
+                    <a href="https://www.google.com/maps/dir/Welcome+to+Fabulous+Las+Vegas+Sign/Luxor+Hotel/Excalibur+Hotel/New+York-New+York+Hotel/Harry+Reid+International+Airport/In-N-Out+Burger+LAX+Sepulveda/Santa+Monica+Pier/Urban+Light+LACMA/Los+Angeles+International+Airport" target="_blank" class="gmap-day-link">🗺️ Google Map 整日路線</a>
+                </h2>
+                <div class="bg-white p-8 rounded-b-2xl border border-slate-200 shadow-sm">
+                    <div class="timeline-item"><div class="timeline-time">08:30–11:00</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('lv_sign')">Welcome to Las Vegas Sign</span><a href="https://www.google.com/maps/search/?api=1&query=Welcome+to+Fabulous+Las+Vegas+Sign" target="_blank" class="gmap-single">MAP</a> 拍照；酒店巡禮（<span class="poi-btn" onclick="TravelApp.focusPOI('luxor')">Luxor</span><a href="https://www.google.com/maps/search/?api=1&query=Luxor+Las+Vegas" target="_blank" class="gmap-single">MAP</a>、<span class="poi-btn" onclick="TravelApp.focusPOI('excalibur')">Excalibur</span><a href="https://www.google.com/maps/search/?api=1&query=Excalibur+Hotel" target="_blank" class="gmap-single">MAP</a>、<span class="poi-btn" onclick="TravelApp.focusPOI('nyny')">New York New York</span><a href="https://www.google.com/maps/search/?api=1&query=New+York-New+York+Las+Vegas" target="_blank" class="gmap-single">MAP</a>）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">12:00–13:30</div><div>檢查行李、退房、前往機場（視航班時間）</div></div>
+                    <div class="timeline-item"><div class="timeline-time">13:53–15:06</div><div>搭乘 NK1636 飛往 LAX</div></div>
+                    <div class="timeline-item"><div class="timeline-time">16:00–17:00</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('innout_lax')">In N Out</span><a href="https://www.google.com/maps/search/?api=1&query=In-N-Out+Burger+LAX+Sepulveda" target="_blank" class="gmap-single">MAP</a> 午餐</div></div>
+                    <div class="timeline-item"><div class="timeline-time">17:00–18:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('santa_monica')">Santa Monica Pier</span><a href="https://www.google.com/maps/search/?api=1&query=Santa+Monica+Pier" target="_blank" class="gmap-single">MAP</a> 拍攝 66 號公路終點牌</div></div>
+                    <div class="timeline-item"><div class="timeline-time">18:30–19:30</div><div><span class="poi-btn" onclick="TravelApp.focusPOI('lacma')">LACMA Urban Light</span><a href="https://www.google.com/maps/search/?api=1&query=Urban+Light+LACMA" target="_blank" class="gmap-single">MAP</a>（若交通擁堵可放棄）</div></div>
+                    <div class="timeline-item"><div class="timeline-time text-red-600 font-bold italic">00:05 4/07</div><div class="font-bold text-red-600 italic underline">CI7 起飛回台</div></div>
+                    <div class="timeline-item"><div class="timeline-time">4/08 05:10</div><div>抵達桃園機場</div></div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+    <script>
+        const TravelApp = {
+            map: null,
+            routeControl: null,
+            markerLayer: null,
+            // 座標庫
+            points: {
+                lax: { c: [33.9416, -118.4085], l: "LAX" },
+                walk_of_fame: { c: [34.1016, -118.3267], l: "Walk of Fame" },
+                hollywood_park: { c: [34.1266, -118.3265], l: "Lake Hollywood Park" },
+                the_getty: { c: [34.0770, -118.4740], l: "The Getty" },
+                grand_market: { c: [34.0507, -118.2486], l: "Grand Central Market" },
+                bradbury: { c: [34.0505, -118.2478], l: "Bradbury Building" },
+                disney_hall: { c: [34.0553, -118.2498], l: "Walt Disney Hall" },
+                crepe: { c: [34.0483, -118.2431], l: "millet crepe" },
+                union_st: { c: [34.0562, -118.2365], l: "Union Station" },
+                griffith: { c: [34.1184, -118.3004], l: "Griffith Observatory" },
+                las_airport: { c: [36.0840, -115.1537], l: "LAS Airport" },
+                shake_shack_lv: { c: [36.2393, -115.1585], l: "Shake Shack Craig" },
+                walmart: { c: [36.2370, -115.1470], l: "Walmart Craig" },
+                lone_rock: { c: [37.0125, -111.5436], l: "Lone Rock Beach" },
+                wahweap: { c: [36.9958, -111.4985], l: "Wahweap Overlook" },
+                glen_dam: { c: [36.9369, -111.4838], l: "Glen Canyon Dam" },
+                horseshoe: { c: [36.8795, -111.5104], l: "馬蹄灣" },
+                glen_overlook: { c: [36.9287, -111.4886], l: "Dam Overlook" },
+                knights_inn: { c: [36.9145, -111.4554], l: "Knights Inn Page" },
+                dennys: { c: [36.9130, -111.4580], l: "Denny's" },
+                new_wave: { c: [36.9372, -111.5036], l: "The New Wave Trailhead" },
+                chains: { c: [36.9333, -111.4792], l: "The Chains" },
+                biidi: { c: [36.8900, -111.4100], l: "Biidi the Arch" },
+                antelope: { c: [36.8619, -111.3743], l: "羚羊峽谷" },
+                monument_valley: { c: [36.9850, -110.1130], l: "Monument Valley" },
+                gump_point: { c: [37.1014, -109.9907], l: "Gump Point" },
+                wetherill: { c: [36.7320, -110.2580], l: "Wetherill Inn" },
+                john_ford: { c: [36.9530, -110.0910], l: "John Ford Point" },
+                kayenta: { c: [36.7275, -110.2547], l: "Kayenta" },
+                desert_view: { c: [36.0411, -111.8268], l: "Desert View" },
+                lipan: { c: [36.0331, -111.8519], l: "Lipan Point" },
+                mather_point: { c: [36.0617, -112.1077], l: "Mather Point" },
+                red_feather: { c: [35.9550, -112.1250], l: "Red Feather Lodge" },
+                seligman: { c: [35.3258, -112.8755], l: "Seligman" },
+                kingman: { c: [35.1894, -114.0531], l: "Kingman" },
+                carls_jr: { c: [35.2010, -114.0320], l: "Carl's Jr" },
+                hoover: { c: [36.0161, -114.7377], l: "胡佛水庫" },
+                sphere: { c: [36.1212, -115.1617], l: "The Sphere" },
+                venetian: { c: [36.1212, -115.1697], l: "威尼斯人" },
+                bellagio: { c: [36.1126, -115.1767], l: "Bellagio" },
+                paris: { c: [36.1125, -115.1720], l: "巴黎人" },
+                ka_show: { c: [36.1026, -115.1702], l: "MGM Grand (KA Show)" },
+                mandalay: { c: [36.0919, -115.1752], l: "Mandalay Bay" },
+                lv_sign: { c: [36.0820, -115.1728], l: "LV Sign" },
+                luxor: { c: [36.0955, -115.1761], l: "Luxor" },
+                excalibur: { c: [36.0988, -115.1754], l: "Excalibur" },
+                nyny: { c: [36.1025, -115.1746], l: "NYNY Hotel" },
+                innout_lax: { c: [33.9537, -118.3967], l: "In-N-Out LAX" },
+                santa_monica: { c: [34.0099, -118.4960], l: "Santa Monica Pier" },
+                lacma: { c: [34.0639, -118.3592], l: "Urban Light" }
+            },
+
+            // 每天序列
+            daySeqs: {
+                1: ['walk_of_fame', 'hollywood_park', 'the_getty', 'grand_market', 'bradbury', 'disney_hall', 'crepe', 'union_st', 'griffith'],
+                2: ['las_airport', 'shake_shack_lv', 'walmart', 'lone_rock', 'wahweap', 'glen_dam', 'horseshoe', 'glen_overlook', 'knights_inn', 'dennys'],
+                3: ['horseshoe', 'new_wave', 'chains', 'biidi', 'antelope', 'monument_valley', 'gump_point', 'wetherill'],
+                4: ['monument_valley', 'john_ford', 'kayenta', 'desert_view', 'lipan', 'mather_point', 'red_feather'],
+                5: ['red_feather', 'seligman', 'kingman', 'carls_jr', 'hoover', 'las_airport', 'mandalay', 'ka_show', 'sphere', 'venetian', 'bellagio', 'paris'],
+                6: ['lv_sign', 'luxor', 'excalibur', 'nyny', 'las_airport', 'lax', 'innout_lax', 'santa_monica', 'lacma', 'lax']
+            },
+            
+            init() {
+                this.map = L.map('map', { scrollWheelZoom: false }).setView([36, -115], 6);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(this.map);
+                this.markerLayer = L.layerGroup().addTo(this.map);
+            },
+
+            getDayColor(d) {
+                const colors = { 1: "#dc2626", 2: "#16a34a", 3: "#2563eb", 4: "#9333ea", 5: "#ea580c", 6: "#0891b2" };
+                return colors[d] || "#475569";
+            },
+
+            showDay(day) {
+                const status = document.getElementById('route-status');
+                status.style.display = 'block';
+                this.markerLayer.clearLayers();
+                if (this.routeControl) { this.map.removeControl(this.routeControl); }
+
+                const seq = this.daySeqs[day];
+                const latLngs = seq.map(k => L.latLng(this.points[k].c));
+
+                seq.forEach(k => {
+                    const p = this.points[k];
+                    L.circleMarker(p.c, { radius: 8, fillColor: this.getDayColor(day), color: "#fff", weight: 2, fillOpacity: 1 }).bindPopup(`<b>${p.l}</b>`).addTo(this.markerLayer);
+                });
+
+                this.routeControl = L.Routing.control({
+                    waypoints: latLngs,
+                    router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+                    lineOptions: { styles: [{ color: this.getDayColor(day), opacity: 0.8, weight: 8 }] },
+                    createMarker: () => null,
+                    addWaypoints: false,
+                    show: false
+                }).on('routesfound', () => { status.style.display = 'none'; })
+                  .on('routingerror', () => { 
+                      status.innerText = "⚠️ 長距離路網計算受限";
+                      setTimeout(() => status.style.display = 'none', 2000);
+                  })
+                  .addTo(this.map);
+
+                this.map.fitBounds(L.latLngBounds(latLngs), { padding: [50, 50] });
+            },
+
+            focusPOI(key) {
+                const pt = this.points[key];
+                if (pt) {
+                    this.map.flyTo(pt.c, 15, { animate: true, duration: 1.5 });
+                    setTimeout(() => { L.popup().setLatLng(pt.c).setContent(`<b>${pt.l}</b>`).openOn(this.map); }, 1600);
+                }
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => TravelApp.init());
+    </script>
+</body>
+</html>
